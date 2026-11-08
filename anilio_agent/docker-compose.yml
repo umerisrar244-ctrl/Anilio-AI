@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  # Agent CPU Service (FastAPI + LangGraph Brain Orchestrator)
+  anilio-brain:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: anilio_brain_service
+    ports:
+      - "8000:8000"
+    environment:
+      - PORT=8000
+      - HOST=0.0.0.0
+      - SUPABASE_URL=${SUPABASE_URL}
+      - SUPABASE_KEY=${SUPABASE_KEY}
+      - WAN22_WORKER_URL=http://anilio-gpu-worker:8001
+      - FFMPEG_PATH=/usr/bin/ffmpeg
+    volumes:
+      - ./storage:/app/storage
+    restart: unless-stopped
+    depends_on:
+      - anilio-gpu-worker
+
+  # Video GPU Worker (Wan 2.2 TI2V-5B Model Service)
+  # Can be deployed on a dedicated GPU instance (RunPod, Modal, Colab, or on-prem)
+  anilio-gpu-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: anilio_gpu_worker
+    command: ["python", "-m", "workers.gpu_worker_wan22"]
+    ports:
+      - "8001:8001"
+    environment:
+      - WORKER_PORT=8001
+      - WAN22_MODEL_PATH=Wan-AI/Wan2.1-T2V-1.4B
+      - TORCH_CUDA_ARCH_LIST="8.0;8.6;8.9;9.0"
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
+    volumes:
+      - ./models_cache:/root/.cache/huggingface
+      - ./storage:/app/storage
+    restart: unless-stopped
